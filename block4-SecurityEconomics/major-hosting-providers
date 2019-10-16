@@ -1,0 +1,247 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt\n",
+    "import seaborn as sns"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "C:\\ProgramData\\Anaconda3\\lib\\site-packages\\IPython\\core\\interactiveshell.py:3057: DtypeWarning: Columns (15,17,19,27) have mixed types. Specify dtype option on import or set low_memory=False.\n",
+      "  interactivity=interactivity, compiler=compiler, result=result)\n"
+     ]
+    }
+   ],
+   "source": [
+    "# data source: https://surfdrive.surf.nl/files/index.php/s/CZWfWQp3VKGKa8m\n",
+    "df = pd.read_csv('data_with_ports.csv.gz', sep='|', compression='gzip')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# parse string to datetime format\n",
+    "df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')\n",
+    "df['start_time'] = pd.to_datetime(df['start_time'], format='%Y-%m-%dT%H:%M:%S+09:00')\n",
+    "df['stop_time'] = pd.to_datetime(df['stop_time'], format='%Y-%m-%dT%H:%M:%S+09:00')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# remove reserved ips\n",
+    "\n",
+    "reserved_ips = [\n",
+    "    \"0.\",       # software\n",
+    "    \"10.\",      # private network\n",
+    "    \"100.\",     # private network\n",
+    "    \"169.254.\", # subnet\n",
+    "    \"172.\",     # private network\n",
+    "    \"192.\"      # private network\n",
+    "]\n",
+    "\n",
+    "for ips in reserved_ips:\n",
+    "    df = df[~(df.org.isna() & df.target_ip.str.startswith(ips))]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<class 'pandas.core.frame.DataFrame'>\n",
+      "Int64Index: 5719250 entries, 0 to 5721431\n",
+      "Data columns (total 35 columns):\n",
+      "target_ip                 object\n",
+      "date                      datetime64[ns]\n",
+      "sensor_id                 object\n",
+      "service                   object\n",
+      "start_time                datetime64[ns]\n",
+      "stop_time                 datetime64[ns]\n",
+      "duration                  float64\n",
+      "packets                   int64\n",
+      "raw_country               object\n",
+      "raw_as                    object\n",
+      "raw_hostname              object\n",
+      "udp_port_list             object\n",
+      "pyasn_as                  float64\n",
+      "pyasn_as_bgp_size         float64\n",
+      "cc                        object\n",
+      "region                    object\n",
+      "is_oecd                   float64\n",
+      "as_type                   object\n",
+      "as_type_confidence        float64\n",
+      "tg_op                     object\n",
+      "org                       object\n",
+      "org_range                 object\n",
+      "org_rangesize             float64\n",
+      "org_ipsize_seen           float64\n",
+      "org_domainsize_seen       float64\n",
+      "org_ipsize_seen_shared    float64\n",
+      "org_is_hosting            float64\n",
+      "org_tag                   object\n",
+      "caida_type                object\n",
+      "dc                        int64\n",
+      "subs                      float64\n",
+      "as_ipsize_seen            float64\n",
+      "as_domainsize_seen        float64\n",
+      "pps                       float64\n",
+      "year                      int64\n",
+      "dtypes: datetime64[ns](3), float64(14), int64(3), object(15)\n",
+      "memory usage: 1.5+ GB\n"
+     ]
+    }
+   ],
+   "source": [
+    "df.info()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array(['isp-broadband', nan, 'isp-other', 'isp-mobile',\n",
+       "       'other-intermediary', 'hosting', 'non-intermediary', 'gov', 'edu'],\n",
+       "      dtype=object)"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "df.as_type.unique()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([nan, 'other', 'isp-mobile', 'isp-broadband', 'isp-other',\n",
+       "       'hosting', 'cdn', 'edu', 'gov'], dtype=object)"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "df.org_tag.unique()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Major hosting providers"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# a list of major hosting providers\n",
+    "hosts = [\"godaddy\", \"amazon\", \"google\", \"1&1\", \"squarespace\", \"hostgator\", \"ovh\", \"hetzner\", \"softlayer\", \"liquid web\"]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "majorhps = (df[df.org.str.contains(\"|\".join(hosts), case=False, na=False)]\n",
+    "              [[\"org\", \"org_tag\", \"as_type\", \"as_ipsize_seen\"]]\n",
+    "              .drop_duplicates()\n",
+    "              .sort_values(by=[\"org\"]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "majorhps.to_csv(\"major-hosting-providers.csv\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
